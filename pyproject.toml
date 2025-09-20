@@ -1,6 +1,13 @@
 [project]
 name = "hack"
 version = "0.1.0"
-description = "Add your description here"
+description = "LLM powered learning tool with quiz assessment and personalized learning paths"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "streamlit>=1.28.0",
+    "zai-sdk>=0.0.1.0",
+    "elevenlabs>=0.2.0",
+    "networkx>=3.0",
+    "plotly>=5.15.0",
+    "python-dotenv>=1.0.0",
+]

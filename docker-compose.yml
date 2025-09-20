@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  sensai-app:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN}
+      - ELEVENLABS_KEY=${ELEVENLABS_KEY}
+    volumes:
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+
+  # Future services can be added here:
+  # sensai-api:
+  #   build: ./api
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - DATABASE_URL=${DATABASE_URL}
