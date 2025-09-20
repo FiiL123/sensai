@@ -1,8 +1,8 @@
+import streamlit as st
 import logging
 import os
 
 import networkx as nx
-import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 from zai import ZaiClient
@@ -168,115 +168,159 @@ class LearningPathInterfaceClass:
     def create_interactive_graph(self):
         learning_path = st.session_state.learning_path
 
-        # Create a linear graph structure
-        G = nx.Graph()
+        # Create HTML tree structure
+        html_content = self.create_tree_html(learning_path)
 
-        # Add nodes
-        for i, topic in enumerate(learning_path):
-            G.add_node(i, label=topic)
+        # Display the tree
+        st.components.v1.html(html_content, height=600, scrolling=False)
 
-        # Add edges (sequential connections)
-        for i in range(len(learning_path) - 1):
-            G.add_edge(i, i + 1)
+    def create_tree_html(self, learning_path):
+        # Color gradient from green to blue
+        def get_color(index, total):
+            green_val = int(100 + index * 25)
+            blue_val = int(200 + index * 5)
+            return f"rgb(125, {175 + index * 15}, {blue_val})"
 
-        # Create layout
-        pos = nx.spring_layout(G, k=3, iterations=50)
+        # Create safe HTML with proper escaping
+        safe_topics = [topic.replace("'", "&apos;").replace('"', "&quot;") for topic in learning_path]
 
-        # Create edge trace
-        edge_x = []
-        edge_y = []
-        for edge in G.edges():
-            x0, y0 = pos[edge[0]]
-            x1, y1 = pos[edge[1]]
-            edge_x.extend([x0, x1, None])
-            edge_y.extend([y0, y1, None])
+        # CSS styles
+        css = """
+        <style>
+        .tree {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            min-width: 100%;
+        }
+        .node {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 4px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid white;
+            min-width: 200px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            white-space: nowrap;
+        }
+        .node:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
+        .node-text {
+            display: inline;
+            word-wrap: normal;
+            max-width: none;
+        }
+        .connector {
+            width: 30px;
+            height: 2px;
+            background: linear-gradient(to right, #ddd, #ccc);
+            border-radius: 1px;
+            flex-shrink: 0;
+        }
+        </style>
+        """
 
-        # Create node trace
-        node_x = []
-        node_y = []
-        node_text = []
-        node_colors = []
-        node_sizes = []
+        # Create horizontal tree structure
+        tree_content = ""
+        for i, topic in enumerate(safe_topics):
+            color = get_color(i, len(learning_path))
 
-        for node in G.nodes():
-            x, y = pos[node]
-            node_x.append(x)
-            node_y.append(y)
-            node_text.append(learning_path[node])
-            # Color progression from green (easy) to purple (advanced)
-            progress = node / (len(learning_path) - 1) if len(learning_path) > 1 else 0
-            node_colors.append(
-                f"rgb({int(50 + progress * 150)}, {int(200 - progress * 100)}, {int(100 + progress * 155)})"
-            )
-            # Size nodes based on position
-            node_sizes.append(20 + (len(learning_path) - node) * 2)
+            # Add connecting line (except for first item)
+            if i > 0:
+                tree_content += "<div class='connector'></div>"
 
-        # Create Plotly figure
-        fig = go.Figure()
+            # Add node with proper navigation to slide_display
+            tree_content += f"""
+            <div class="node" style="background-color: {color}; border-color: {color};"
+                 title="Click to start: {topic}"
+                 onclick="navigateToSlide('{topic}')">
+                <span class="node-text">{topic}</span>
+            </div>
+            """
 
-        # Add edges
-        fig.add_trace(
-            go.Scatter(x=edge_x, y=edge_y, mode="lines", line=dict(width=3, color="#e0e0e0"), hoverinfo="none")
-        )
+            # Add connector line (except for last item)
+            if i < len(learning_path) - 1:
+                tree_content += "<div class='connector'></div>"
 
-        # Add nodes
-        fig.add_trace(
-            go.Scatter(
-                x=node_x,
-                y=node_y,
-                mode="markers+text",
-                text=node_text,
-                textposition="bottom center",
-                textfont=dict(size=10, family="Arial", color="#333"),
-                marker=dict(size=node_sizes, color=node_colors, line=dict(width=2, color="white")),
-                hoverinfo="text",
-                hovertext=[f"📚 Click to start learning: {topic}" for topic in learning_path],
-            )
-        )
+        # Full HTML document with proper script handling
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Learning Path</title>
+            {css}
+        </head>
+        <body>
+            <div class="tree">
+                {tree_content}
+            </div>
 
-        # Add progress indicators on nodes
-        fig.add_trace(
-            go.Scatter(
-                x=node_x,
-                y=node_y,
-                mode="text",
-                text=[f"Step {i + 1}" for i in range(len(learning_path))],
-                textposition="top center",
-                textfont=dict(size=8, color="#666", family="Arial"),
-                hoverinfo="none",
-            )
-        )
+            <!-- Streamlit Component Script -->
+            <script>
+                // Navigation function to slide display
+                function navigateToSlide(topic) {{
+                    try {{
+                        // Update session state for the selected topic
+                        window.parent.postMessage({{
+                            'type': 'streamlit:setSessionState',
+                            'values': {{
+                                'current_slide': topic,
+                                'current_page': 'slide_display',
+                                'topic': window.parent.document.title || 'learning'
+                            }}
+                        }}, '*');
 
-        # Update layout
-        fig.update_layout(
-            showlegend=False,
-            hovermode="closest",
-            margin=dict(b=80, l=50, r=50, t=30),
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            plot_bgcolor="white",
-            height=650,
-            title_x=0.5,
-            title_font=dict(size=16, family="Arial"),
-        )
+                        // Trigger page rerun to navigate to slide display
+                        setTimeout(function() {{
+                            window.parent.postMessage({{
+                                'type': 'streamlit:rerun'
+                            }}, '*');
+                        }}, 100);
 
-        # Display the chart
-        st.plotly_chart(fig, use_container_width=True, key="learning_path_graph")
+                        console.log('Navigating to slide:', topic);
+                    }} catch (error) {{
+                        console.log('Navigation failed:', error);
 
-        # Add clickable buttons for each node below the chart
-        st.markdown("---")
-        st.markdown("### **Click on a topic to start learning:**")
+                        // Fallback: try to set component value
+                        try {{
+                            window.parent.postMessage({{
+                                'type': 'streamlit:setComponentValue',
+                                'value': {{
+                                    'type': 'topic_click',
+                                    'topic': topic,
+                                    'navigate': true
+                                }}
+                            }}, '*');
+                        }} catch (fallbackError) {{
+                            console.log('Fallback navigation also failed:', fallbackError);
+                        }}
+                    }}
+                }}
 
-        # Create columns for the topic buttons
-        cols = st.columns(len(learning_path))
+                // Handle component unmount
+                window.addEventListener('beforeunload', function() {{
+                    // Clean up if needed
+                    console.log('Component unmounting');
+                }});
+            </script>
+        </body>
+        </html>
+        """
 
-        for i, topic in enumerate(learning_path):
-            with cols[i]:
-                if st.button(topic, key=f"node_{i}", use_container_width=True):
-                    st.session_state.current_slide = topic
-                    st.session_state.current_page = "slide_display"
-                    st.rerun()
-
+        return html
 
 def LearningPathInterface():
     interface = LearningPathInterfaceClass()
