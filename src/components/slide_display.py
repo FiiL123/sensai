@@ -1,10 +1,13 @@
 import streamlit as st
 import time
+from src.utils.text_to_speech import TextToSpeechService
 
 class SlideDisplayInterfaceClass:
     def __init__(self):
         self.slide_content = self.generate_slide_content()
+        self.tts_service = self.initialize_tts()
         self.display_slide()
+        self.auto_generate_tts()
 
     def generate_slide_content(self):
         current_slide = st.session_state.current_slide
@@ -87,6 +90,28 @@ This content will be synchronized with the voice recording to enhance your learn
 
         return content_by_slide.get(current_slide, default_content)
 
+    def initialize_tts(self):
+        """Initialize the TextToSpeech service with error handling"""
+        try:
+            return TextToSpeechService()
+        except Exception as e:
+            st.error(f"Failed to initialize text-to-speech service: {e}")
+            st.info("Voice functionality will be unavailable. Please check your ELEVENLABS_API_KEY environment variable.")
+            return None
+
+    def auto_generate_tts(self):
+        """Generate TTS content when the slide loads"""
+        if self.tts_service:
+            try:
+                # Generate TTS but don't auto-play it - wait for user to click play
+                self.audio_data = self.tts_service.generate_speech(self.slide_content)
+                st.session_state.tts_audio = self.audio_data
+                st.session_state.tts_ready = True
+                st.info("Voice content generated successfully. Click play to listen.")
+            except Exception as e:
+                st.error(f"Failed to generate voice content: {e}")
+                st.session_state.tts_ready = False
+
     def display_slide(self):
         current_slide = st.session_state.current_slide
         topic = st.session_state.topic
@@ -128,6 +153,7 @@ This content will be synchronized with the voice recording to enhance your learn
         self.question_prompt()
 
     def voice_controls(self):
+        """Voice control buttons with real TTS functionality"""
         col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
 
         with col1:
@@ -141,10 +167,15 @@ This content will be synchronized with the voice recording to enhance your learn
         with col3:
             # Play/Pause button
             if st.button("▶️ Play", type="primary", use_container_width=True):
-                st.success("Playing voice recording...")
-                # Simulate voice playback
-                time.sleep(2)
-                st.warning("Voice recording completed!")
+                if st.session_state.get('tts_ready') and st.session_state.get('tts_audio'):
+                    try:
+                        self.tts_service.play_audio(st.session_state.tts_audio)
+                        st.success("Playing voice recording...")
+                        st.session_state.tts_playing = True
+                    except Exception as e:
+                        st.error(f"Error playing audio: {e}")
+                else:
+                    st.warning("Voice content not ready. Please wait for generation to complete.")
 
         with col4:
             if st.button("⏩", help="Forward"):
