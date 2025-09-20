@@ -187,8 +187,7 @@ This content will be synchronized with the voice recording to enhance your learn
         with col3:
             if st.button("Next Slide →", use_container_width=True, type="primary"):
                 st.info("Moving to next slide...")
-                # Navigate to quiz results for demo purposes
-                st.session_state.current_page = 'quiz_results'
+                # Stay on slide_display page for demo purposes
                 st.rerun()
 
 def SlideDisplayInterface():

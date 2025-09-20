@@ -41,10 +41,9 @@ class QuizInterfaceClass:
         Generate at least 6 but no more than 8 questions depending on the complexity of {topic}."""
 
         try:
-            
             # Use z.ai SDK to generate questions
             client = ZaiClient(api_key=os.getenv("ANTHROPIC_AUTH_TOKEN"))
-            
+
             response = client.chat.completions.create(
                 model="glm-4.5",
                 messages=[{"role": "user", "content": prompt}],
@@ -55,19 +54,15 @@ class QuizInterfaceClass:
                 temperature=0.6,
             )
 
-            
             content = response.choices[0].message.content
-            
 
             # Enhanced parsing with multiple fallback strategies
-            
 
             # Try different parsing strategies
             questions = []
 
             # Strategy 1: Parse numbered questions
             lines = content.strip().split("\n")
-            
 
             for line in lines:
                 line = line.strip()
@@ -90,13 +85,11 @@ class QuizInterfaceClass:
 
             # Strategy 2: If no numbered questions found, look for question marks
             if not questions:
-                
                 potential_questions = [line.strip() for line in lines if line.strip().endswith("?")]
                 questions.extend(potential_questions[:8])  # Take up to 8 questions
 
             # Strategy 3: If still no questions, split by common separators
             if not questions:
-                
                 sentences = []
                 for line in lines:
                     if line.strip():
@@ -116,9 +109,6 @@ class QuizInterfaceClass:
             # Limit to maximum 8 questions
             questions = questions[:8]
 
-            
-            
-
             # Validate questions
             valid_questions = []
             for q in questions:
@@ -126,7 +116,6 @@ class QuizInterfaceClass:
                     valid_questions.append(q.strip())
 
             if not valid_questions:
-                
                 valid_questions = [
                     f"Do you have any prior knowledge about {topic}?",
                     "Have you studied related subjects before?",
@@ -134,11 +123,8 @@ class QuizInterfaceClass:
                 ]
 
             st.session_state.quiz_questions = valid_questions
-            
 
         except Exception as e:
-            
-            
             # Log the error
             logging.error(f"Failed to generate questions via z.ai API: {e}")
             # Fallback to hardcoded questions if API fails
@@ -151,13 +137,10 @@ class QuizInterfaceClass:
                 "Are you interested in hands-on practice along with theory?",
             ]
             st.session_state.quiz_questions = fallback_questions
-            
 
     def display_question(self):
         current_idx = st.session_state.current_question
         total_questions = len(st.session_state.quiz_questions)
-
-        
 
         # Progress bar
         progress = (current_idx + 1) / total_questions
