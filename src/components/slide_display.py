@@ -1,8 +1,15 @@
 import streamlit as st
 import time
+import json
 
 class SlideDisplayInterfaceClass:
     def __init__(self):
+        # Initialize session state for voice playback
+        if 'voice_playing' not in st.session_state:
+            st.session_state.voice_playing = False
+        if 'voice_progress' not in st.session_state:
+            st.session_state.voice_progress = 0
+
         self.slide_content = self.generate_slide_content()
         self.display_slide()
 
@@ -91,104 +98,385 @@ This content will be synchronized with the voice recording to enhance your learn
         current_slide = st.session_state.current_slide
         topic = st.session_state.topic
 
-        st.title(f"📚 {current_slide}")
+        # Hide Streamlit default elements and create full-page slide layout
+        st.markdown(
+            """
+            <style>
+            /* Hide default Streamlit elements */
+            div[data-testid="stHeader"], div[data-testid="stSidebar"], .main .block-container {
+                display: none !important;
+            }
 
-        # Progress indicator
-        progress = 0.8  # Progress through learning journey
-        st.progress(progress)
-        st.markdown(f"**Learning: {topic}**")
+            /* Full page layout with no scrollbars */
+            html, body, .stApp, .main {
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+                height: 100vh !important;
+                width: 100vw !important;
+            }
 
-        # Main slide area - full width and height
-        st.markdown("---")
+            /* Slide container */
+            .slide-container {
+                width: 100vw;
+                height: 100vh;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                flex-direction: column;
+                position: fixed;
+                top: 0;
+                left: 0;
+            }
 
-        # Slide content container
-        with st.container(height=500):
-            # Display formatted slide content
-            st.markdown(
-                f"""
-                <div style="
-                    background: white;
-                    padding: 2rem;
-                    border-radius: 10px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-                    height: 100%;
-                    overflow-y: auto;
-                ">
-                    {self.slide_content}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            /* Main slide content */
+            .slide-main {
+                width: 100%;
+                height: 100vh;
+                background: white;
+                display: flex;
+                flex-direction: column;
+            }
 
-        # Voice controls section
-        st.markdown("---")
-        self.voice_controls()
+            /* Slide header */
+            .slide-header {
+                background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+                color: white;
+                padding: 2rem 3rem;
+                border-radius: 0;
+            }
 
-        # Question prompt section
-        self.question_prompt()
+            .slide-title {
+                font-size: 2.5rem;
+                font-weight: 700;
+                margin: 0;
+                line-height: 1.2;
+            }
 
-    def voice_controls(self):
-        col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+            .slide-subtitle {
+                font-size: 1.2rem;
+                opacity: 0.9;
+                margin: 0.5rem 0 0 0;
+                font-weight: 400;
+            }
 
-        with col1:
-            if st.button("⏮️", help="Rewind"):
-                st.info("Rewinding 10 seconds...")
+            /* Slide body - scrollable content area */
+            .slide-body {
+                flex: 1;
+                padding: 2.5rem 3rem;
+                overflow-y: auto;
+                max-height: calc(100vh - 200px); /* Leave space for control panel */
+            }
 
-        with col2:
-            if st.button("⏪", help="Backward"):
-                st.info("Going back 5 seconds...")
+            /* Floating control panel */
+            .control-panel {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(20px);
+                border-top: 1px solid rgba(255, 255, 255, 0.2);
+                padding: 1rem 2rem;
+                box-shadow: 0 -10px 30px rgba(0,0,0,0.1);
+                z-index: 1000;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 1rem;
+                height: auto;
+            }
 
-        with col3:
-            # Play/Pause button
-            if st.button("▶️ Play", type="primary", use_container_width=True):
-                st.success("Playing voice recording...")
-                # Simulate voice playback
-                time.sleep(2)
-                st.warning("Voice recording completed!")
+            /* Control panel sections */
+            .control-section {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
 
-        with col4:
-            if st.button("⏩", help="Forward"):
-                st.info("Skipping forward 5 seconds...")
+            .control-btn {
+                background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                font-size: 1.2rem;
+                transition: all 0.3s ease;
+            }
 
-        with col5:
-            if st.button("⏹️", help="Stop"):
-                st.warning("Voice recording stopped.")
+            .control-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+            }
 
-    def question_prompt(self):
-        st.markdown("---")
-        st.markdown("💬 **Ask Questions**")
+            .play-pause.playing {
+                background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            }
 
-        # Question input
-        user_question = st.text_input(
-            "What questions do you have about this topic?",
-            placeholder="Type your question here...",
-            label_visibility="collapsed"
+            /* Progress bar */
+            .progress-container {
+                width: 150px;
+                height: 6px;
+                background: #e5e7eb;
+                border-radius: 3px;
+                overflow: hidden;
+            }
+
+            .progress-bar {
+                height: 100%;
+                background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%);
+                border-radius: 3px;
+                transition: width 0.3s ease;
+            }
+
+            /* Question input */
+            .question-input {
+                padding: 0.5rem 1rem;
+                border: 2px solid #e5e7eb;
+                border-radius: 8px;
+                font-size: 0.9rem;
+                width: 250px;
+                outline: none;
+                transition: border-color 0.3s ease;
+            }
+
+            .question-input:focus {
+                border-color: #4f46e5;
+            }
+
+            /* Ask button */
+            .ask-btn {
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 0.5rem 1rem;
+                cursor: pointer;
+                font-size: 0.9rem;
+                transition: all 0.3s ease;
+            }
+
+            .ask-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+            }
+
+            /* Navigation buttons */
+            .nav-btn {
+                background: #f3f4f6;
+                color: #374151;
+                border: none;
+                border-radius: 8px;
+                padding: 0.5rem 1rem;
+                cursor: pointer;
+                font-size: 0.9rem;
+                transition: all 0.3s ease;
+            }
+
+            .nav-btn:hover {
+                background: #e5e7eb;
+            }
+
+            .nav-btn.primary {
+                background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+                color: white;
+            }
+
+            .nav-btn.primary:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
         )
 
-        # Question buttons
-        col1, col2, col3 = st.columns([2, 1, 2])
+        # Create full-page slide using HTML rendering
+        st.markdown("""
+        <div class="slide-container">
+            <div class="slide-main">
+                <div class="slide-header">
+                    <h1 class="slide-title">{}</h1>
+                    <p class="slide-subtitle">Learning Module: {}</p>
+                </div>
+                <div class="slide-body">
+        """.format(current_slide, topic), unsafe_allow_html=True)
 
-        with col2:
-            if st.button("📤 Ask Question", use_container_width=True):
-                if user_question.strip():
-                    st.success(f"Question: {user_question}")
-                    st.info("Your question has been recorded. An AI tutor will respond shortly!")
-                else:
-                    st.warning("Please enter a question before asking.")
+        # Display slide content
+        self._format_slide_content()
 
-        # Previous/Next navigation
-        st.markdown("---")
-        col1, col2, col3 = st.columns([2, 1, 2])
+        # Close slide body and main container
+        st.markdown("""
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        with col1:
-            if st.button("← Previous Slide", use_container_width=True):
-                st.info("Navigating to previous slide...")
+        # Add control panel
+        play_pause_text = "⏸️" if st.session_state.voice_playing else "▶️"
+        play_pause_class = "play-pause playing" if st.session_state.voice_playing else ""
 
-        with col3:
-            if st.button("Next Slide →", use_container_width=True, type="primary"):
-                st.info("Moving to next slide...")
-                # Stay on slide_display page for demo purposes
-                st.rerun()
+        control_panel_html = f"""
+        <div class="control-panel">
+            <div class="control-section">
+                <button class="control-btn" onclick="function() {{ alert('Rewind 10 seconds'); }}" title="Rewind 10 seconds">⏮️</button>
+                <button class="control-btn" onclick="function() {{ alert('Backward 5 seconds'); }}" title="Backward 5 seconds">⏪</button>
+                <button class="control-btn {play_pause_class}" onclick="function() {{ alert('Toggle voice'); }}" title="Play/Pause">{play_pause_text}</button>
+                <button class="control-btn" onclick="function() {{ alert('Forward 5 seconds'); }}" title="Forward 5 seconds">⏩</button>
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: {st.session_state.voice_progress}%"></div>
+                </div>
+            </div>
+            <div class="control-section">
+                <input type="text" class="question-input" placeholder="Type your question here..." id="question_input">
+                <button class="ask-btn" onclick="function() {{
+                    const question = document.getElementById('question_input').value;
+                    if(question) alert('Question: ' + question);
+                }}">📤 Ask</button>
+            </div>
+            <div class="control-section">
+                <button class="nav-btn" onclick="function() {{ alert('Previous slide'); }}" title="Previous slide">← Previous Slide</button>
+                <button class="nav-btn primary" onclick="function() {{ alert('Next slide'); }}" title="Next slide">Next Slide →</button>
+            </div>
+        </div>
+        """
+
+        st.markdown(control_panel_html, unsafe_allow_html=True)
+
+
+    def _render_slide_content(self, current_slide, topic):
+        """Render PowerPoint-style slide content"""
+        return self._format_slide_content()
+
+    def _format_slide_content(self):
+        """Format slide content with proper PowerPoint styling using Streamlit components"""
+        content = self.slide_content
+
+        # Split content into lines and process them
+        lines = content.split('\n')
+        bullet_points = []
+
+        for line in lines:
+            stripped_line = line.strip()
+
+            if not stripped_line:
+                # Empty line, add spacing
+                st.markdown("<br><br>", unsafe_allow_html=True)
+                continue
+
+            # Collect bullet points first
+            if stripped_line.startswith("-"):
+                bullet_text = stripped_line[1:].strip()
+                bullet_points.append(bullet_text)
+                continue
+
+            # Handle headers using Streamlit's built-in components
+            if stripped_line.startswith("# "):
+                st.title(stripped_line[2:])
+            elif stripped_line.startswith("## "):
+                st.header(stripped_line[3:])
+            elif stripped_line.startswith("### "):
+                st.subheader(stripped_line[4:])
+            elif stripped_line.startswith("**") and stripped_line.endswith("**") and "**" in stripped_line[1:-1]:
+                # Handle bold text
+                bold_text = stripped_line[2:-2]
+                st.markdown(f"**{bold_text}**")
+            else:
+                # Handle regular paragraphs
+                if stripped_line:
+                    st.markdown(f"#### {stripped_line}" if not stripped_line.startswith(("## ", "### ", "# ")) else stripped_line)
+
+        # Render bullet points in a nice container
+        if bullet_points:
+            st.markdown("""
+            <div style="background: #f8fafc; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
+            <h4 style="margin: 0 0 1rem 0; color: #1f2937;">Key Topics:</h4>
+            <ul style="margin: 0; padding-left: 1.5rem;">
+            """, unsafe_allow_html=True)
+
+            for point in bullet_points:
+                st.markdown(f"<li style='margin: 0.5rem 0; color: #4b5563;'>{point}</li>", unsafe_allow_html=True)
+
+            st.markdown("</ul></div>", unsafe_allow_html=True)
+
+    def _render_control_panel(self):
+        """Render control panel using HTML structure"""
+        play_pause_text = "⏸️" if st.session_state.voice_playing else "▶️"
+        play_pause_class = "play-pause playing" if st.session_state.voice_playing else ""
+
+        return f"""
+        <div class="control-section">
+            <button class="control-btn" onclick="function() {{ alert('Rewind 10 seconds'); }}" title="Rewind 10 seconds">⏮️</button>
+            <button class="control-btn" onclick="function() {{ alert('Backward 5 seconds'); }}" title="Backward 5 seconds">⏪</button>
+            <button class="control-btn {play_pause_class}" onclick="function() {{ alert('Toggle voice'); }}" title="Play/Pause">{play_pause_text}</button>
+            <button class="control-btn" onclick="function() {{ alert('Forward 5 seconds'); }}" title="Forward 5 seconds">⏩</button>
+            <div class="progress-container">
+                <div class="progress-bar" style="width: {st.session_state.voice_progress}%"></div>
+            </div>
+        </div>
+        <div class="control-section">
+            <input type="text" class="question-input" placeholder="Type your question here..." id="question_input">
+            <button class="ask-btn" onclick="function() {{
+                const question = document.getElementById('question_input').value;
+                if(question) alert('Question: ' + question);
+            }}">📤 Ask</button>
+        </div>
+        <div class="control-section">
+            <button class="nav-btn" onclick="function() {{ alert('Previous slide'); }}" title="Previous slide">← Previous Slide</button>
+            <button class="nav-btn primary" onclick="function() {{ alert('Next slide'); }}" title="Next slide">Next Slide →</button>
+        </div>
+        """
+
+    def toggle_voice(self):
+        """Toggle voice playback"""
+        st.session_state.voice_playing = not st.session_state.voice_playing
+        if st.session_state.voice_playing:
+            st.success("Voice recording started...")
+        else:
+            st.warning("Voice recording paused.")
+
+    def rewind_audio(self):
+        """Rewind audio by 10 seconds"""
+        st.session_state.voice_progress = max(0, st.session_state.voice_progress - 10)
+        st.info("Rewinding 10 seconds...")
+
+    def backward_audio(self):
+        """Backward audio by 5 seconds"""
+        st.session_state.voice_progress = max(0, st.session_state.voice_progress - 5)
+        st.info("Going back 5 seconds...")
+
+    def forward_audio(self):
+        """Forward audio by 5 seconds"""
+        st.session_state.voice_progress = min(100, st.session_state.voice_progress + 5)
+        st.info("Skipping forward 5 seconds...")
+
+    def ask_question(self, question):
+        """Handle user questions"""
+        if question:
+            st.success(f"Question submitted: {question}")
+            st.info("Your question has been recorded. An AI tutor will respond shortly!")
+
+    def previous_slide(self):
+        """Navigate to previous slide"""
+        st.info("Navigating to previous slide...")
+        # Add actual slide navigation logic here
+        # For now, just stay on current slide
+
+    def next_slide(self):
+        """Navigate to next slide"""
+        st.info("Moving to next slide...")
+        # Navigate to quiz results for demo purposes
+        st.session_state.current_page = 'quiz_results'
+        st.rerun()
+
+    def add_voice_control_handlers(self):
+        """No longer needed - using Streamlit native callbacks"""
+        pass
 
 def SlideDisplayInterface():
     interface = SlideDisplayInterfaceClass()
+    interface.add_voice_control_handlers()

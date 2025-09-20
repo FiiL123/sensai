@@ -1,8 +1,7 @@
 import streamlit as st
 import logging
 import os
-
-import networkx as nx
+import time
 import streamlit as st
 from dotenv import load_dotenv
 from zai import ZaiClient
@@ -162,165 +161,29 @@ class LearningPathInterfaceClass:
                 </p>
             </div>
             """,
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
     def create_interactive_graph(self):
         learning_path = st.session_state.learning_path
 
-        # Create HTML tree structure
-        html_content = self.create_tree_html(learning_path)
+        # Add clickable buttons for each node below the chart
+        st.markdown("---")
+        st.markdown("### **Click on a topic to start learning:**")
 
-        # Display the tree
-        st.components.v1.html(html_content, height=600, scrolling=False)
+        # Create columns for the topic buttons
+        cols = st.columns(len(learning_path))
 
-    def create_tree_html(self, learning_path):
-        # Color gradient from green to blue
-        def get_color(index, total):
-            green_val = int(100 + index * 25)
-            blue_val = int(200 + index * 5)
-            return f"rgb(125, {175 + index * 15}, {blue_val})"
-
-        # Create safe HTML with proper escaping
-        safe_topics = [topic.replace("'", "&apos;").replace('"', "&quot;") for topic in learning_path]
-
-        # CSS styles
-        css = """
-        <style>
-        .tree {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 20px;
-            overflow-x: auto;
-            min-width: 100%;
-        }
-        .node {
-            display: inline-block;
-            padding: 12px 24px;
-            margin: 4px;
-            border-radius: 25px;
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 2px solid white;
-            min-width: 200px;
-            text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            white-space: nowrap;
-        }
-        .node:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-        }
-        .node-text {
-            display: inline;
-            word-wrap: normal;
-            max-width: none;
-        }
-        .connector {
-            width: 30px;
-            height: 2px;
-            background: linear-gradient(to right, #ddd, #ccc);
-            border-radius: 1px;
-            flex-shrink: 0;
-        }
-        </style>
-        """
-
-        # Create horizontal tree structure
-        tree_content = ""
-        for i, topic in enumerate(safe_topics):
-            color = get_color(i, len(learning_path))
-
-            # Add connecting line (except for first item)
-            if i > 0:
-                tree_content += "<div class='connector'></div>"
-
-            # Add node with proper navigation to slide_display
-            tree_content += f"""
-            <div class="node" style="background-color: {color}; border-color: {color};"
-                 title="Click to start: {topic}"
-                 onclick="navigateToSlide('{topic}')">
-                <span class="node-text">{topic}</span>
-            </div>
-            """
-
-            # Add connector line (except for last item)
-            if i < len(learning_path) - 1:
-                tree_content += "<div class='connector'></div>"
-
-        # Full HTML document with proper script handling
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Learning Path</title>
-            {css}
-        </head>
-        <body>
-            <div class="tree">
-                {tree_content}
-            </div>
-
-            <!-- Streamlit Component Script -->
-            <script>
-                // Navigation function to slide display
-                function navigateToSlide(topic) {{
-                    try {{
-                        // Update session state for the selected topic
-                        window.parent.postMessage({{
-                            'type': 'streamlit:setSessionState',
-                            'values': {{
-                                'current_slide': topic,
-                                'current_page': 'slide_display',
-                                'topic': window.parent.document.title || 'learning'
-                            }}
-                        }}, '*');
-
-                        // Trigger page rerun to navigate to slide display
-                        setTimeout(function() {{
-                            window.parent.postMessage({{
-                                'type': 'streamlit:rerun'
-                            }}, '*');
-                        }}, 100);
-
-                        console.log('Navigating to slide:', topic);
-                    }} catch (error) {{
-                        console.log('Navigation failed:', error);
-
-                        // Fallback: try to set component value
-                        try {{
-                            window.parent.postMessage({{
-                                'type': 'streamlit:setComponentValue',
-                                'value': {{
-                                    'type': 'topic_click',
-                                    'topic': topic,
-                                    'navigate': true
-                                }}
-                            }}, '*');
-                        }} catch (fallbackError) {{
-                            console.log('Fallback navigation also failed:', fallbackError);
-                        }}
-                    }}
-                }}
-
-                // Handle component unmount
-                window.addEventListener('beforeunload', function() {{
-                    // Clean up if needed
-                    console.log('Component unmounting');
-                }});
-            </script>
-        </body>
-        </html>
-        """
-
-        return html
+        for i, topic in enumerate(learning_path):
+            with cols[i]:
+                if st.button(
+                    topic,
+                    key=f"node_{i}",
+                    use_container_width=True
+                ):
+                    st.session_state.current_slide = topic
+                    st.session_state.current_page = 'slide_display'
+                    st.rerun()
 
 def LearningPathInterface():
     interface = LearningPathInterfaceClass()
